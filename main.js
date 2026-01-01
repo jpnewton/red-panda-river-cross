@@ -26,7 +26,7 @@ const clock = new THREE.Clock();
 const splashSound = new Audio('assets/splash.mp3');
 const crashSound = new Audio('https://actions.google.com/sounds/v1/impacts/crash_metal.ogg');
 
-// --- 2. HIGH-DEFINITION SCENE SETUP ---
+// --- 2. SCENE SETUP ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
 
@@ -36,66 +36,30 @@ camera.position.set(0, 18, 12);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer, realistic shadows
-renderer.outputColorSpace = THREE.SRGBColorSpace; // Critical for Kirby's pink color
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// --- 3. ENHANCED LIGHTING ---
-// Hemisphere light acts like a sky (Top is sky color, Bottom is ground color)
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+// --- 3. LIGHTING ---
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
 scene.add(hemiLight);
 
-// Directional light creates the "Sun" and shadows
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
 dirLight.position.set(10, 20, 10);
 dirLight.castShadow = true;
-dirLight.shadow.camera.left = -20;
-dirLight.shadow.camera.right = 20;
-dirLight.shadow.camera.top = 20;
-dirLight.shadow.camera.bottom = -20;
 scene.add(dirLight);
 
-// --- 4. DETAILED VEHICLE FACTORY ---
+// --- 4. VEHICLE & LOG FACTORY ---
 function createVehicle(z, direction) {
     const group = new THREE.Group();
-    const type = Math.random();
     const colors = [0xd32f2f, 0x1976d2, 0x388e3c, 0xfbc02d];
-    const carMat = new THREE.MeshStandardMaterial({ 
-        color: colors[Math.floor(Math.random()*colors.length)],
-        roughness: 0.1, // Makes them shiny like real cars
-        metalness: 0.5 
-    });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0 });
+    const carMat = new THREE.MeshStandardMaterial({ color: colors[Math.floor(Math.random()*colors.length)], roughness: 0.2 });
+    
+    const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.7, 1.4), carMat);
+    base.position.y = 0.4; group.add(base);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 1.2), new THREE.MeshStandardMaterial({color: 0x222222}));
+    cabin.position.set(-0.2, 1.0, 0); group.add(cabin);
 
-    if (type < 0.4) { // Detailed Sedan
-        const base = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.6, 1.4), carMat);
-        base.position.y = 0.4; group.add(base);
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 1.2), glassMat);
-        cabin.position.set(-0.2, 1.0, 0); group.add(cabin);
-    } else if (type < 0.7) { // SUV
-        const base = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.9, 1.4), carMat);
-        base.position.y = 0.5; group.add(base);
-        const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.6, 1.3), glassMat);
-        top.position.set(-0.1, 1.2, 0); group.add(top);
-    } else { // Semi Truck
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 1.5), carMat);
-        cabin.position.set(1.2, 0.9, 0); group.add(cabin);
-        const cargo = new THREE.Mesh(new THREE.BoxGeometry(3.8, 2.0, 1.5), new THREE.MeshStandardMaterial({color: 0xeeeeee}));
-        cargo.position.set(-1.4, 1.1, 0); group.add(cargo);
-        const window = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 1.3), glassMat);
-        window.position.set(1.8, 1.4, 0); group.add(window);
-    }
-
-    // High-def Wheels
-    const wheelGeom = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 24);
-    const wheelMat = new THREE.MeshStandardMaterial({color: 0x111111});
-    [[1.1, 0.35, 0.7], [1.1, 0.35, -0.7], [-1.1, 0.35, 0.7], [-1.1, 0.35, -0.7]].forEach(pos => {
-        const w = new THREE.Mesh(wheelGeom, wheelMat);
-        w.rotation.x = Math.PI/2; w.position.set(pos[0], pos[1], pos[2]);
-        group.add(w);
-    });
-
-    group.position.set(Math.random() * 60 - 30, 0, z);
+    group.position.set(Math.random() * 40 - 20, 0, z);
     if (direction < 0) group.rotation.y = Math.PI;
     group.userData = { speed: 0.08 + Math.random() * 0.1, direction, type: 'car' };
     group.traverse(c => { if(c.isMesh) c.castShadow = true; });
@@ -104,19 +68,12 @@ function createVehicle(z, direction) {
 }
 
 function createRealisticLog(z, direction) {
-    const group = new THREE.Group();
-    const log = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.65, 0.65, 4.5, 16), 
-        new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 1 })
-    );
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 4, 12), new THREE.MeshStandardMaterial({ color: 0x5d4037 }));
     log.rotation.z = Math.PI / 2;
-    log.position.y = 0.35;
-    group.add(log);
-    group.position.set(Math.random() * 60 - 30, 0, z);
-    group.userData = { speed: 0.04 + Math.random() * 0.05, direction, type: 'log' };
-    group.traverse(c => { if(c.isMesh) c.castShadow = true; });
-    scene.add(group);
-    return group;
+    log.position.set(Math.random() * 40 - 20, 0.3, z);
+    log.userData = { speed: 0.04 + Math.random() * 0.05, direction, type: 'log' };
+    scene.add(log);
+    return log;
 }
 
 // --- 5. WORLD GEN ---
@@ -136,26 +93,34 @@ LANES.forEach(lane => {
     }
 });
 
-const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 }));
+const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new THREE.MeshStandardMaterial({ color: 0xffd700 }));
 trophy.position.set(0, 1, -16);
 scene.add(trophy);
 
-// --- 6. KIRBY HIGH-DEF LOAD ---
+// --- 6. KIRBY AUTO-SCALE LOAD ---
 const loader = new GLTFLoader();
 loader.load('assets/Kirby.glb', (gltf) => {
     player = gltf.scene;
-    player.scale.set(0.05, 0.05, 0.05); 
+    
+    // AUTO-SCALE LOGIC:
+    const box = new THREE.Box3().setFromObject(player);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const targetSize = 1.2; // We want Kirby to be roughly 1.2 units big
+    const scale = targetSize / maxDim;
+    player.scale.set(scale, scale, scale);
+
     player.position.set(0, 0, 6);
+    player.visible = true; // Force visibility
     
     player.traverse((node) => {
         if (node.isMesh) {
             node.castShadow = true;
             node.receiveShadow = true;
-            // Force Standard Material to show lighting definition
+            node.material.visible = true; // Force material visibility
             if (node.material) {
-                node.material.metalness = 0; 
-                node.material.roughness = 0.6; // Not too shiny, not too dull
-                node.material.needsUpdate = true;
+                node.material.metalness = 0;
+                node.material.roughness = 0.5;
             }
         }
     });
@@ -165,18 +130,12 @@ loader.load('assets/Kirby.glb', (gltf) => {
         mixer = new THREE.AnimationMixer(player);
         mixer.clipAction(gltf.animations[0]).play();
     }
+    console.log("Kirby loaded and auto-scaled to:", scale);
+}, undefined, (error) => {
+    console.error("Kirby failed to load. Check file name:", error);
 });
 
-// --- 7. LOGIC & RENDER LOOP ---
-function handleCollision(type) {
-    if (isDead || !player) return;
-    isDead = true;
-    if (type === 'car') {
-        crashSound.play();
-        reset(); isDead = false;
-    } else { splashSound.play(); reset(); isDead = false; }
-}
-
+// --- 7. LOGIC ---
 function reset() { if(player) player.position.set(0, 0, 6); }
 
 window.addEventListener('keydown', (e) => {
@@ -185,7 +144,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("Kirby Won!"); reset(); }
+    if (player.position.z <= -16) { alert("Kirby Safe!"); reset(); }
 });
 
 document.getElementById('start-button').addEventListener('click', () => {
@@ -197,8 +156,7 @@ function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
     if (mixer) mixer.update(delta);
-    trophy.rotation.y += 0.02;
-
+    
     if (player && gameStarted) {
         const lane = LANES.find(l => Math.abs(l.z - player.position.z) < 0.5);
         let onLog = false;
@@ -212,13 +170,13 @@ function animate() {
             const dz = Math.abs(player.position.z - obj.position.z);
 
             if (dz < 0.9 && !isDead) {
-                if (obj.userData.type === 'car' && dx < 2.5) handleCollision('car');
+                if (obj.userData.type === 'car' && dx < 2.2) { crashSound.play(); reset(); }
                 if (obj.userData.type === 'log' && dx < 2.2) { 
                     onLog = true; player.position.x += obj.userData.speed * obj.userData.direction; 
                 }
             }
         });
-        if (lane && lane.type === 'water' && !onLog && !isDead) handleCollision('water');
+        if (lane && lane.type === 'water' && !onLog) { splashSound.play(); reset(); }
 
         camera.position.z = player.position.z + 10;
         camera.lookAt(0, 0, player.position.z - 5);
