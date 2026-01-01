@@ -36,7 +36,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
 dirLight.position.set(10, 20, 10);
@@ -45,18 +45,16 @@ scene.add(dirLight);
 
 // --- 2. THE SPLAT EFFECT ---
 const splatGeom = new THREE.CircleGeometry(1.5, 32);
-const splatMat = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+const splatMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0 });
 const splat = new THREE.Mesh(splatGeom, splatMat);
 splat.rotation.x = -Math.PI / 2;
-splat.position.y = 0.05; // Slightly above ground
+splat.position.y = 0.05;
 scene.add(splat);
 
 function triggerSplat(pos) {
     splat.position.x = pos.x;
     splat.position.z = pos.z;
     splat.material.opacity = 1;
-    
-    // Fade out the splat after a moment
     setTimeout(() => {
         const fade = setInterval(() => {
             splat.material.opacity -= 0.1;
@@ -65,23 +63,51 @@ function triggerSplat(pos) {
     }, 1000);
 }
 
-// --- 3. MODELS (CARS, LOGS, TIRES) ---
-function createRealisticCar(z, speed, direction) {
+// --- 3. VEHICLE FACTORY (SEDANS, SUVS, TRUCKS) ---
+function createVehicle(z, speed, direction) {
     const group = new THREE.Group();
-    const carColor = [0xff4444, 0x3333ff, 0x222222, 0xffffff][Math.floor(Math.random()*4)];
-    const bodyMat = new THREE.MeshPhongMaterial({ color: carColor });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.6, 1.5), bodyMat);
-    body.position.y = 0.5;
-    group.add(body);
+    const type = Math.random(); // Randomly choose vehicle type
+    
+    const colors = [0xd32f2f, 0x1976d2, 0x388e3c, 0xfbc02d, 0x7b1fa2];
+    const bodyMat = new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random()*colors.length)] });
+    const glassMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+    const tireMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
 
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 1.3), new THREE.MeshPhongMaterial({color:0x333333}));
-    cabin.position.set(-0.2, 1.0, 0);
-    group.add(cabin);
+    if (type < 0.4) { 
+        // --- SEDAN ---
+        const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 1.2), bodyMat);
+        base.position.y = 0.4;
+        group.add(base);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.1), glassMat);
+        cabin.position.set(-0.2, 0.9, 0);
+        group.add(cabin);
+    } else if (type < 0.7) {
+        // --- SUV / VAN ---
+        const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.8, 1.3), bodyMat);
+        base.position.y = 0.5;
+        group.add(base);
+        const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.2), glassMat);
+        top.position.set(-0.2, 1.1, 0);
+        group.add(top);
+    } else {
+        // --- LARGE TRUCK ---
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 1.4), bodyMat);
+        cabin.position.set(1, 0.9, 0);
+        group.add(cabin);
+        const container = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.8, 1.4), new THREE.MeshPhongMaterial({color: 0xeeeeee}));
+        container.position.set(-1.4, 1.0, 0);
+        group.add(container);
+        const windShield = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 1.2), glassMat);
+        windShield.position.set(1.6, 1.3, 0);
+        group.add(windShield);
+    }
 
-    const wheels = [[1, 0.35, 0.7], [1, 0.35, -0.7], [-1, 0.35, 0.7], [-1, 0.35, -0.7]];
+    // Shared: Add Wheels
+    const wheelGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.3, 16);
+    const wheels = [[1, 0.3, 0.6], [1, 0.3, -0.6], [-1, 0.3, 0.6], [-1, 0.3, -0.6]];
     wheels.forEach(pos => {
-        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.3, 16), new THREE.MeshPhongMaterial({color: 0x111111}));
-        w.rotation.x = Math.PI / 2;
+        const w = new THREE.Mesh(wheelGeom, tireMat);
+        w.rotation.x = Math.PI/2;
         w.position.set(pos[0], pos[1], pos[2]);
         group.add(w);
     });
@@ -89,15 +115,8 @@ function createRealisticCar(z, speed, direction) {
     group.position.set(Math.random() * 40 - 20, 0, z);
     if (direction < 0) group.rotation.y = Math.PI;
     group.userData = { speed, direction, type: 'car' };
+    scene.add(group);
     return group;
-}
-
-function createTire(z, speed, direction) {
-    const mesh = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.25, 12, 24), new THREE.MeshPhongMaterial({ color: 0x111111 }));
-    mesh.rotation.x = Math.PI / 2;
-    mesh.position.set(Math.random() * 40 - 20, 0.1, z);
-    mesh.userData = { speed, direction, type: 'tire' };
-    return mesh;
 }
 
 function createRealisticLog(z, speed, direction) {
@@ -105,10 +124,11 @@ function createRealisticLog(z, speed, direction) {
     log.rotation.z = Math.PI / 2;
     log.position.set(Math.random() * 40 - 20, 0.3, z);
     log.userData = { speed, direction, type: 'log' };
+    scene.add(log);
     return log;
 }
 
-// --- 4. WORLD GEN ---
+// --- 4. WORLD GENERATION ---
 const obstacles = [];
 LANES.forEach(lane => {
     const color = lane.type === 'grass' ? 0x2ecc71 : (lane.type === 'water' ? 0x0077be : 0x222222);
@@ -116,19 +136,13 @@ LANES.forEach(lane => {
     ground.position.set(0, -0.5, lane.z);
     scene.add(ground);
 
-    const speed = 0.06 + Math.random() * 0.04;
+    const speed = 0.05 + Math.random() * 0.05;
     const direction = Math.random() > 0.5 ? 1 : -1;
 
     if (lane.type === 'water') {
-        for (let i = 0; i < 4; i++) {
-            const obj = Math.random() > 0.4 ? createRealisticLog(lane.z, speed, direction) : createTire(lane.z, speed, direction);
-            obstacles.push(obj); scene.add(obj);
-        }
+        for (let i = 0; i < 3; i++) obstacles.push(createRealisticLog(lane.z, speed, direction));
     } else if (lane.type === 'road') {
-        for (let i = 0; i < 2; i++) {
-            const car = createRealisticCar(lane.z, speed * 1.8, direction);
-            obstacles.push(car); scene.add(car);
-        }
+        for (let i = 0; i < 2; i++) obstacles.push(createVehicle(lane.z, speed * 1.6, direction));
     }
 });
 
@@ -152,33 +166,16 @@ loader.load('assets/foxpacked.glb', (gltf) => {
 function handleCollision(type) {
     if (isDead) return;
     isDead = true;
-
     if (type === 'car') {
         crashSound.play();
         triggerSplat(player.position);
-        
-        // Visual Hit Indicator (Red Emissive)
-        player.traverse(node => {
-            if (node.isMesh) {
-                node.material.emissive = new THREE.Color(0xff0000);
-                node.material.emissiveIntensity = 1;
-            }
-        });
-
+        player.traverse(n => { if(n.isMesh) { n.material.emissive.setHex(0xff0000); n.material.emissiveIntensity = 2; }});
         setTimeout(() => {
-            player.traverse(node => {
-                if (node.isMesh) {
-                    node.material.emissive = new THREE.Color(0x000000);
-                }
-            });
+            player.traverse(n => { if(n.isMesh) n.material.emissive.setHex(0x000000); });
             reset();
             isDead = false;
         }, 800);
-    } else {
-        splashSound.play();
-        reset();
-        isDead = false;
-    }
+    } else { splashSound.play(); reset(); isDead = false; }
 }
 
 function reset() { player.position.set(0, 0, 6); }
@@ -189,7 +186,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("Winner!"); reset(); }
+    if (player.position.z <= -16) { alert("Success!"); reset(); }
 });
 
 document.getElementById('start-button').addEventListener('click', () => {
@@ -197,18 +194,15 @@ document.getElementById('start-button').addEventListener('click', () => {
     document.getElementById('overlay').style.display = 'none';
 });
 
-// --- 6. GAME LOOP ---
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
     if (mixer) mixer.update(delta);
     trophy.rotation.y += 0.02;
 
-    let onPlatform = false;
-
+    let onLog = false;
     if (player) {
         const lane = LANES.find(l => Math.abs(l.z - player.position.z) < 0.5);
-        
         obstacles.forEach(obj => {
             obj.position.x += obj.userData.speed * obj.userData.direction;
             if (obj.position.x > 25) obj.position.x = -25;
@@ -218,34 +212,16 @@ function animate() {
             const dz = Math.abs(player.position.z - obj.position.z);
 
             if (dz < 0.9 && !isDead) {
-                if (obj.userData.type === 'car' && dx < 2.5) {
-                    handleCollision('car');
-                }
-                if ((obj.userData.type === 'log' && dx < 2.2) || (obj.userData.type === 'tire' && dx < 1.0)) {
-                    onPlatform = true;
-                    player.position.x += obj.userData.speed * obj.userData.direction;
-                }
+                if (obj.userData.type === 'car' && dx < 2.5) handleCollision('car');
+                if (obj.userData.type === 'log' && dx < 2.2) { onLog = true; player.position.x += obj.userData.speed * obj.userData.direction; }
             }
         });
-
-        if (lane && lane.type === 'water' && !onPlatform && !isDead) {
-            handleCollision('water');
-        }
+        if (lane && lane.type === 'water' && !onLog && !isDead) handleCollision('water');
 
         camera.position.z = player.position.z + 12;
-        if (isDead) {
-            camera.position.x = (Math.random() - 0.5) * 1.0; // Violent shake
-        } else {
-            camera.position.x = 0;
-        }
+        camera.position.x = isDead ? (Math.random()-0.5) : 0;
         camera.lookAt(player.position.x, 0, player.position.z);
     }
     renderer.render(scene, camera);
 }
 animate();
-
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
