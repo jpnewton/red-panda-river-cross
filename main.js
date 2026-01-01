@@ -128,21 +128,21 @@ const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new 
 trophy.position.set(0, 1, -16);
 scene.add(trophy);
 
-// --- 6. OCTOPUS LOAD ---
+// --- 6. KIRBY LOAD ---
 const loader = new GLTFLoader();
-loader.load('assets/Octopus.glb', (gltf) => {
+loader.load('assets/Kirby.glb', (gltf) => {
     player = gltf.scene;
-    player.scale.set(0.5, 0.5, 0.5); // Adjust this if he's too big/small
+    // Kirby is often exported very large; start at 0.05 and increase if needed
+    player.scale.set(0.05, 0.05, 0.05); 
     player.position.set(0, 0, 6);
     
     player.traverse((node) => {
         if (node.isMesh) {
             node.castShadow = true;
             node.receiveShadow = true;
-            // Simple material reset to avoid the "black" issue
             if (node.material) {
                 node.material.metalness = 0;
-                node.material.roughness = 0.7;
+                node.material.roughness = 0.8;
             }
         }
     });
@@ -153,7 +153,7 @@ loader.load('assets/Octopus.glb', (gltf) => {
         mixer.clipAction(gltf.animations[0]).play();
     }
 }, undefined, (error) => {
-    console.error("Error loading Octopus.glb:", error);
+    console.error("Error loading Kirby.glb:", error);
 });
 
 // --- 7. LOGIC & EVENTS ---
@@ -180,7 +180,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("The Octopus crossed the road!"); reset(); }
+    if (player.position.z <= -16) { alert("Kirby reached the finish line!"); reset(); }
 });
 
 document.getElementById('start-button').addEventListener('click', () => {
@@ -216,7 +216,7 @@ function animate() {
         });
         if (lane && lane.type === 'water' && !onLog && !isDead) handleCollision('water');
 
-        // Camera Follow
+        // Fixed Follow Camera
         camera.position.z = player.position.z + 10;
         camera.position.x = 0;
         camera.lookAt(0, 0, player.position.z - 5);
