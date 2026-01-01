@@ -29,9 +29,8 @@ const crashSound = new Audio('https://actions.google.com/sounds/v1/impacts/crash
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
 
-// --- CAMERA SETUP (LOCKED ANGLE) ---
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 18, 12); // Higher and slightly back for a consistent view
+camera.position.set(0, 18, 12); 
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -66,7 +65,7 @@ function triggerSplat(pos) {
 }
 
 // --- 3. VEHICLE FACTORY ---
-function createVehicle(z, speed, direction) {
+function createVehicle(z, direction) {
     const group = new THREE.Group();
     const type = Math.random();
     const colors = [0xd32f2f, 0x1976d2, 0x388e3c, 0xfbc02d, 0x7b1fa2];
@@ -105,20 +104,31 @@ function createVehicle(z, speed, direction) {
         group.add(w);
     });
 
-    group.position.set(Math.random() * 40 - 20, 0, z);
+    const speed = 0.08 + Math.random() * 0.1; // Unique speed per car
+    group.position.set(Math.random() * 60 - 30, 0, z);
     if (direction < 0) group.rotation.y = Math.PI;
     group.userData = { speed, direction, type: 'car' };
     scene.add(group);
     return group;
 }
 
-function createRealisticLog(z, speed, direction) {
-    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 4, 12), new THREE.MeshPhongMaterial({ color: 0x5d4037 }));
+function createRealisticLog(z, direction) {
+    const group = new THREE.Group();
+    const log = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.6, 0.6, 4, 12),
+        new THREE.MeshPhongMaterial({ color: 0x5d4037 })
+    );
     log.rotation.z = Math.PI / 2;
-    log.position.set(Math.random() * 40 - 20, 0.3, z);
-    log.userData = { speed, direction, type: 'log' };
-    scene.add(log);
-    return log;
+    log.position.y = 0.3;
+    group.add(log);
+    
+    // DEBUG: Speed is now generated uniquely for every single log
+    const speed = 0.04 + Math.random() * 0.05; 
+    
+    group.position.set(Math.random() * 60 - 30, 0, z);
+    group.userData = { speed, direction, type: 'log' };
+    scene.add(group);
+    return group;
 }
 
 // --- 4. WORLD GENERATION ---
@@ -129,13 +139,16 @@ LANES.forEach(lane => {
     ground.position.set(0, -0.5, lane.z);
     scene.add(ground);
 
-    const speed = 0.05 + Math.random() * 0.05;
     const direction = Math.random() > 0.5 ? 1 : -1;
 
     if (lane.type === 'water') {
-        for (let i = 0; i < 3; i++) obstacles.push(createRealisticLog(lane.z, speed, direction));
+        for (let i = 0; i < 4; i++) {
+            obstacles.push(createRealisticLog(lane.z, direction));
+        }
     } else if (lane.type === 'road') {
-        for (let i = 0; i < 2; i++) obstacles.push(createVehicle(lane.z, speed * 1.6, direction));
+        for (let i = 0; i < 2; i++) {
+            obstacles.push(createVehicle(lane.z, direction));
+        }
     }
 });
 
@@ -199,28 +212,28 @@ function animate() {
         const lane = LANES.find(l => Math.abs(l.z - player.position.z) < 0.5);
         obstacles.forEach(obj => {
             obj.position.x += obj.userData.speed * obj.userData.direction;
-            if (obj.position.x > 25) obj.position.x = -25;
-            if (obj.position.x < -25) obj.position.x = 25;
+            
+            // Boundary wrapping
+            if (obj.position.x > 30) obj.position.x = -30;
+            if (obj.position.x < -30) obj.position.x = 30;
 
             const dx = Math.abs(player.position.x - obj.position.x);
             const dz = Math.abs(player.position.z - obj.position.z);
 
             if (dz < 0.9 && !isDead) {
                 if (obj.userData.type === 'car' && dx < 2.5) handleCollision('car');
-                if (obj.userData.type === 'log' && dx < 2.2) { onLog = true; player.position.x += obj.userData.speed * obj.userData.direction; }
+                if (obj.userData.type === 'log' && dx < 2.2) { 
+                    onLog = true; 
+                    player.position.x += obj.userData.speed * obj.userData.direction; 
+                }
             }
         });
         if (lane && lane.type === 'water' && !onLog && !isDead) handleCollision('water');
 
-        // --- FIXED LOCKED CAMERA ---
-        // 1. Move camera with player forward/backward (Z)
         camera.position.z = player.position.z + 10;
-        // 2. Keep camera centered on track (X remains 0)
         camera.position.x = 0;
-        // 3. Look at a fixed point ahead of the player to keep the angle straight
         camera.lookAt(0, 0, player.position.z - 5);
 
-        // Screen shake logic
         if (isDead) {
             camera.position.x += (Math.random()-0.5) * 0.8;
             camera.position.y += (Math.random()-0.5) * 0.8;
@@ -231,3 +244,9 @@ function animate() {
     renderer.render(scene, camera);
 }
 animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
