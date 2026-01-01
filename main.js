@@ -20,7 +20,7 @@ const LANES = [
 let gameStarted = false;
 let player = null;
 let mixer = null;
-let isDead = false; // New state to prevent multiple hits
+let isDead = false;
 const clock = new THREE.Clock();
 
 const splashSound = new Audio('assets/splash.mp3');
@@ -36,25 +36,45 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
 dirLight.position.set(10, 20, 10);
 dirLight.castShadow = true;
 scene.add(dirLight);
 
-// --- 2. DETAILED MODELS ---
+// --- 2. THE SPLAT EFFECT ---
+const splatGeom = new THREE.CircleGeometry(1.5, 32);
+const splatMat = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+const splat = new THREE.Mesh(splatGeom, splatMat);
+splat.rotation.x = -Math.PI / 2;
+splat.position.y = 0.05; // Slightly above ground
+scene.add(splat);
+
+function triggerSplat(pos) {
+    splat.position.x = pos.x;
+    splat.position.z = pos.z;
+    splat.material.opacity = 1;
+    
+    // Fade out the splat after a moment
+    setTimeout(() => {
+        const fade = setInterval(() => {
+            splat.material.opacity -= 0.1;
+            if (splat.material.opacity <= 0) clearInterval(fade);
+        }, 50);
+    }, 1000);
+}
+
+// --- 3. MODELS (CARS, LOGS, TIRES) ---
 function createRealisticCar(z, speed, direction) {
     const group = new THREE.Group();
     const carColor = [0xff4444, 0x3333ff, 0x222222, 0xffffff][Math.floor(Math.random()*4)];
     const bodyMat = new THREE.MeshPhongMaterial({ color: carColor });
-    const glassMat = new THREE.MeshPhongMaterial({ color: 0x88ccff, transparent: true, opacity: 0.6 });
-
     const body = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.6, 1.5), bodyMat);
     body.position.y = 0.5;
     group.add(body);
 
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 1.3), glassMat);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 1.3), new THREE.MeshPhongMaterial({color:0x333333}));
     cabin.position.set(-0.2, 1.0, 0);
     group.add(cabin);
 
@@ -88,7 +108,7 @@ function createRealisticLog(z, speed, direction) {
     return log;
 }
 
-// --- 3. WORLD GENERATION ---
+// --- 4. WORLD GEN ---
 const obstacles = [];
 LANES.forEach(lane => {
     const color = lane.type === 'grass' ? 0x2ecc71 : (lane.type === 'water' ? 0x0077be : 0x222222);
@@ -116,7 +136,7 @@ const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new 
 trophy.position.set(0, 1, -16);
 scene.add(trophy);
 
-// --- 4. PLAYER & HIT EFFECTS ---
+// --- 5. PLAYER & COLLISION ---
 const loader = new GLTFLoader();
 loader.load('assets/foxpacked.glb', (gltf) => {
     player = gltf.scene;
@@ -135,19 +155,25 @@ function handleCollision(type) {
 
     if (type === 'car') {
         crashSound.play();
-        // 1. Red Flash Effect
-        player.traverse(node => {
-            if (node.isMesh) node.material.emissive.setHex(0xff0000);
-        });
+        triggerSplat(player.position);
         
-        // 2. Short Delay before reset
+        // Visual Hit Indicator (Red Emissive)
+        player.traverse(node => {
+            if (node.isMesh) {
+                node.material.emissive = new THREE.Color(0xff0000);
+                node.material.emissiveIntensity = 1;
+            }
+        });
+
         setTimeout(() => {
             player.traverse(node => {
-                if (node.isMesh) node.material.emissive.setHex(0x000000);
+                if (node.isMesh) {
+                    node.material.emissive = new THREE.Color(0x000000);
+                }
             });
             reset();
             isDead = false;
-        }, 500);
+        }, 800);
     } else {
         splashSound.play();
         reset();
@@ -163,7 +189,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("Goal!"); reset(); }
+    if (player.position.z <= -16) { alert("Winner!"); reset(); }
 });
 
 document.getElementById('start-button').addEventListener('click', () => {
@@ -171,7 +197,7 @@ document.getElementById('start-button').addEventListener('click', () => {
     document.getElementById('overlay').style.display = 'none';
 });
 
-// --- 5. GAME LOOP ---
+// --- 6. GAME LOOP ---
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
@@ -206,15 +232,11 @@ function animate() {
             handleCollision('water');
         }
 
-        // Camera Logic
         camera.position.z = player.position.z + 12;
-        // Screen Shake Effect when dead
         if (isDead) {
-            camera.position.x = (Math.random() - 0.5) * 0.5;
-            camera.position.y = 15 + (Math.random() - 0.5) * 0.5;
+            camera.position.x = (Math.random() - 0.5) * 1.0; // Violent shake
         } else {
             camera.position.x = 0;
-            camera.position.y = 15;
         }
         camera.lookAt(player.position.x, 0, player.position.z);
     }
