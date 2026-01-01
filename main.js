@@ -70,24 +70,17 @@ function createVehicle(z, direction) {
     const type = Math.random();
     const colors = [0xd32f2f, 0x1976d2, 0x388e3c, 0xfbc02d, 0x7b1fa2];
     const bodyMat = new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random()*colors.length)] });
-    const glassMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
-    const tireMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
-
-    if (type < 0.4) { // Sedan
+    
+    // Sedan, SUV, or Truck
+    if (type < 0.4) { 
         const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 1.2), bodyMat);
         base.position.y = 0.4;
         group.add(base);
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.1), glassMat);
-        cabin.position.set(-0.2, 0.9, 0);
-        group.add(cabin);
-    } else if (type < 0.7) { // SUV
+    } else if (type < 0.7) { 
         const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.8, 1.3), bodyMat);
         base.position.y = 0.5;
         group.add(base);
-        const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.2), glassMat);
-        top.position.set(-0.2, 1.1, 0);
-        group.add(top);
-    } else { // Truck
+    } else { 
         const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 1.4), bodyMat);
         cabin.position.set(1, 0.9, 0);
         group.add(cabin);
@@ -98,7 +91,7 @@ function createVehicle(z, direction) {
 
     const wheelGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.3, 16);
     [[1, 0.3, 0.6], [1, 0.3, -0.6], [-1, 0.3, 0.6], [-1, 0.3, -0.6]].forEach(pos => {
-        const w = new THREE.Mesh(wheelGeom, tireMat);
+        const w = new THREE.Mesh(wheelGeom, new THREE.MeshPhongMaterial({color: 0x111111}));
         w.rotation.x = Math.PI/2;
         w.position.set(pos[0], pos[1], pos[2]);
         group.add(w);
@@ -113,21 +106,12 @@ function createVehicle(z, direction) {
 }
 
 function createRealisticLog(z, direction) {
-    const group = new THREE.Group();
-    const log = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.6, 0.6, 4, 12),
-        new THREE.MeshPhongMaterial({ color: 0x5d4037 })
-    );
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 4, 12), new THREE.MeshPhongMaterial({ color: 0x5d4037 }));
     log.rotation.z = Math.PI / 2;
-    log.position.y = 0.3;
-    group.add(log);
-    
-    const speed = 0.04 + Math.random() * 0.05; 
-    
-    group.position.set(Math.random() * 60 - 30, 0, z);
-    group.userData = { speed, direction, type: 'log' };
-    scene.add(group);
-    return group;
+    log.position.set(Math.random() * 60 - 30, 0.3, z);
+    log.userData = { speed: 0.04 + Math.random() * 0.05, direction, type: 'log' };
+    scene.add(log);
+    return log;
 }
 
 // --- 4. WORLD GENERATION ---
@@ -139,15 +123,10 @@ LANES.forEach(lane => {
     scene.add(ground);
 
     const direction = Math.random() > 0.5 ? 1 : -1;
-
     if (lane.type === 'water') {
-        for (let i = 0; i < 4; i++) {
-            obstacles.push(createRealisticLog(lane.z, direction));
-        }
+        for (let i = 0; i < 4; i++) obstacles.push(createRealisticLog(lane.z, direction));
     } else if (lane.type === 'road') {
-        for (let i = 0; i < 2; i++) {
-            obstacles.push(createVehicle(lane.z, direction));
-        }
+        for (let i = 0; i < 2; i++) obstacles.push(createVehicle(lane.z, direction));
     }
 });
 
@@ -155,13 +134,23 @@ const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new 
 trophy.position.set(0, 1, -16);
 scene.add(trophy);
 
-// --- 5. PLAYER & COLLISION (CHICKEN UPDATE) ---
+// --- 5. PLAYER LOAD (WITH SAFETY FALLBACK) ---
 const loader = new GLTFLoader();
-// Updated to load Chicken.glb
+
+function createDefaultPlayer() {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshPhongMaterial({color: 0xff0000}));
+    body.position.y = 0.4;
+    group.add(body);
+    player = group;
+    player.position.set(0, 0, 6);
+    scene.add(player);
+}
+
+// Try to load Chicken.glb
 loader.load('assets/Chicken.glb', (gltf) => {
     player = gltf.scene;
-    // Adjust scale: Chickens are usually smaller than foxes in 3D files
-    player.scale.set(0.8, 0.8, 0.8); 
+    player.scale.set(0.8, 0.8, 0.8);
     player.position.set(0, 0, 6);
     scene.add(player);
     if (gltf.animations.length > 0) {
@@ -169,11 +158,12 @@ loader.load('assets/Chicken.glb', (gltf) => {
         mixer.clipAction(gltf.animations[0]).play();
     }
 }, undefined, (error) => {
-    console.error("Error loading Chicken.glb. Make sure the file is in the assets folder.", error);
+    console.warn("Chicken.glb not found. Using red box placeholder.");
+    createDefaultPlayer();
 });
 
 function handleCollision(type) {
-    if (isDead) return;
+    if (isDead || !player) return;
     isDead = true;
     if (type === 'car') {
         crashSound.play();
@@ -190,7 +180,7 @@ function handleCollision(type) {
     } else { splashSound.play(); reset(); isDead = false; }
 }
 
-function reset() { player.position.set(0, 0, 6); }
+function reset() { if(player) player.position.set(0, 0, 6); }
 
 window.addEventListener('keydown', (e) => {
     if (!gameStarted || !player || isDead) return;
@@ -201,10 +191,15 @@ window.addEventListener('keydown', (e) => {
     if (player.position.z <= -16) { alert("The Chicken made it!"); reset(); }
 });
 
-document.getElementById('start-button').addEventListener('click', () => {
-    gameStarted = true;
-    document.getElementById('overlay').style.display = 'none';
-});
+// START BUTTON FIX
+const startBtn = document.getElementById('start-button');
+if(startBtn) {
+    startBtn.addEventListener('click', () => {
+        gameStarted = true;
+        document.getElementById('overlay').style.display = 'none';
+        console.log("Game Started!");
+    });
+}
 
 // --- 6. GAME LOOP ---
 function animate() {
