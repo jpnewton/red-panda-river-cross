@@ -39,162 +39,51 @@ renderer.shadowMap.enabled = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// --- 3. LIGHTING (Enhanced for definition) ---
-const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
-scene.add(ambientLight);
+// --- 3. HIGH-DEF LIGHTING ---
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0); // Sky light
+scene.add(hemiLight);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-dirLight.position.set(10, 20, 10);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.5); // Sun light
+dirLight.position.set(5, 20, 10);
 dirLight.castShadow = true;
+dirLight.shadow.mapSize.width = 2048;
+dirLight.shadow.mapSize.height = 2048;
 scene.add(dirLight);
 
-// Kirby Spotlight (Follows Kirby to ensure he is never invisible)
-const spotLight = new THREE.SpotLight(0xffffff, 10);
-spotLight.angle = Math.PI / 6;
-spotLight.penumbra = 0.5;
-scene.add(spotLight);
+// --- 4. ADVANCED CAR GENERATION (EXTRUSION) ---
+function createCarShape() {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.lineTo(2.4, 0);   // Bottom
+    shape.lineTo(2.4, 0.3); // Rear Bumper
+    shape.lineTo(2.0, 0.3); 
+    shape.lineTo(1.7, 0.9); // Rear Window
+    shape.lineTo(0.8, 0.9); // Roof
+    shape.lineTo(0.5, 0.4); // Windshield
+    shape.lineTo(0.0, 0.3); // Hood
+    return shape;
+}
 
-// --- 4. HIGH-DEF VEHICLE FACTORY ---
 function createVehicle(z, direction) {
     const group = new THREE.Group();
-    const type = Math.random();
-    const colors = [0xd32f2f, 0x1976d2, 0x388e3c, 0xfbc02d];
-    const carMat = new THREE.MeshStandardMaterial({ color: colors[Math.floor(Math.random()*4)], roughness: 0.2, metalness: 0.3 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-
-    if (type < 0.4) { // Sedan
-        const b = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.6, 1.4), carMat);
-        b.position.y = 0.4; group.add(b);
-        const c = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.2), glassMat);
-        c.position.set(-0.2, 0.9, 0); group.add(c);
-    } else if (type < 0.7) { // SUV
-        const b = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.9, 1.4), carMat);
-        b.position.y = 0.5; group.add(b);
-        const t = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.3), glassMat);
-        t.position.set(-0.1, 1.1, 0); group.add(t);
-    } else { // Semi Truck
-        const cab = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 1.5), carMat);
-        cab.position.set(1.2, 0.8, 0); group.add(cab);
-        const cargo = new THREE.Mesh(new THREE.BoxGeometry(3.8, 2.0, 1.5), new THREE.MeshStandardMaterial({color: 0xeeeeee}));
-        cargo.position.set(-1.4, 1.0, 0); group.add(cargo);
-    }
-
-    const wheelGeom = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 16);
-    [[1, 0.3, 0.7], [1, 0.3, -0.7], [-1, 0.3, 0.7], [-1, 0.3, -0.7]].forEach(p => {
-        const w = new THREE.Mesh(wheelGeom, new THREE.MeshStandardMaterial({color: 0x111111}));
-        w.rotation.x = Math.PI/2; w.position.set(p[0], p[1], p[2]);
-        group.add(w);
-    });
-
-    group.position.set(Math.random() * 40 - 20, 0, z);
-    if (direction < 0) group.rotation.y = Math.PI;
-    group.userData = { speed: 0.08 + Math.random() * 0.1, direction, type: 'car' };
-    group.traverse(n => { if(n.isMesh) n.castShadow = true; });
-    scene.add(group);
-    return group;
-}
-
-function createRealisticLog(z, direction) {
-    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 4, 16), new THREE.MeshStandardMaterial({ color: 0x5d4037 }));
-    log.rotation.z = Math.PI / 2;
-    log.position.set(Math.random() * 40 - 20, 0.3, z);
-    log.userData = { speed: 0.04 + Math.random() * 0.05, direction, type: 'log' };
-    log.castShadow = true;
-    scene.add(log);
-    return log;
-}
-
-// --- 5. WORLD GEN ---
-const obstacles = [];
-LANES.forEach(lane => {
-    const color = lane.type === 'grass' ? 0x2ecc71 : (lane.type === 'water' ? 0x0077be : 0x222222);
-    const ground = new THREE.Mesh(new THREE.BoxGeometry(60, 1, GRID_SIZE), new THREE.MeshStandardMaterial({ color }));
-    ground.position.set(0, -0.5, lane.z);
-    ground.receiveShadow = true;
-    scene.add(ground);
-    const dir = Math.random() > 0.5 ? 1 : -1;
-    if (lane.type === 'water') for (let i=0; i<4; i++) obstacles.push(createRealisticLog(lane.z, dir));
-    else if (lane.type === 'road') for (let i=0; i<2; i++) obstacles.push(createVehicle(lane.z, dir));
-});
-
-// --- 6. KIRBY LOAD & POSITION FIX ---
-const loader = new GLTFLoader();
-loader.load('assets/Kirby.glb', (gltf) => {
-    player = gltf.scene;
-    player.scale.set(0.05, 0.05, 0.05); 
     
-    // Position Fix (Shifted left and up to center him)
-    player.position.set(-1.5, 0.8, 6); 
+    // 1. Create Aerodynamic Body
+    const extrudeSettings = { steps: 1, depth: 1.2, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 2 };
+    const carColor = [0xd32f2f, 0x1976d2, 0x2e7d32, 0xf9a825][Math.floor(Math.random() * 4)];
+    const bodyMat = new THREE.MeshStandardMaterial({ color: carColor, roughness: 0.2, metalness: 0.5 });
+    
+    const geometry = new THREE.ExtrudeGeometry(createCarShape(), extrudeSettings);
+    const body = new THREE.Mesh(geometry, bodyMat);
+    
+    // Center the geometry
+    geometry.center(); 
+    body.position.y = 0.5;
+    group.add(body);
 
-    player.traverse((node) => {
-        if (node.isMesh) {
-            node.castShadow = true;
-            node.receiveShadow = true;
-            // Material Override to ensure visibility
-            node.material.metalness = 0;
-            node.material.roughness = 0.5;
-            node.material.transparent = false;
-            node.material.opacity = 1;
-        }
-    });
-
-    scene.add(player);
-    if (gltf.animations.length > 0) {
-        mixer = new THREE.AnimationMixer(player);
-        mixer.clipAction(gltf.animations[0]).play();
-    }
-}, undefined, (error) => { console.error("Load Error:", error); });
-
-// --- 7. LOGIC ---
-function reset() { if(player) player.position.set(-1.5, 0.8, 6); }
-
-window.addEventListener('keydown', (e) => {
-    if (!gameStarted || !player || isDead) return;
-    if (e.key === "ArrowUp") player.position.z -= GRID_SIZE;
-    if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
-    if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
-    if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-});
-
-document.getElementById('start-button').addEventListener('click', () => {
-    gameStarted = true;
-    document.getElementById('overlay').style.display = 'none';
-});
-
-// --- 8. ANIMATION LOOP ---
-function animate() {
-    requestAnimationFrame(animate);
-    const delta = clock.getDelta();
-    if (mixer) mixer.update(delta);
-
-    if (player && gameStarted) {
-        // Spotlight follows Kirby so he's never in the dark
-        spotLight.position.set(player.position.x, 10, player.position.z + 5);
-        spotLight.target = player;
-
-        const lane = LANES.find(l => Math.abs(l.z - player.position.z) < 0.5);
-        let onLog = false;
-
-        obstacles.forEach(obj => {
-            obj.position.x += obj.userData.speed * obj.userData.direction;
-            if (obj.position.x > 30) obj.position.x = -30;
-            if (obj.position.x < -30) obj.position.x = 30;
-
-            const dx = Math.abs(player.position.x - obj.position.x);
-            const dz = Math.abs(player.position.z - obj.position.z);
-
-            if (dz < 0.9 && !isDead) {
-                if (obj.userData.type === 'car' && dx < 2.5) { crashSound.play(); reset(); }
-                if (obj.userData.type === 'log' && dx < 2.2) { 
-                    onLog = true; player.position.x += obj.userData.speed * obj.userData.direction; 
-                }
-            }
-        });
-        if (lane && lane.type === 'water' && !onLog) { splashSound.play(); reset(); }
-
-        camera.position.z = player.position.z + 10;
-        camera.lookAt(0, 0, player.position.z - 5);
-    }
-    renderer.render(scene, camera);
-}
-animate();
+    // 2. Add Wheels
+    const wheelGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.3, 24);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const positions = [[0.8, 0.3, 0.6], [0.8, 0.3, -0.6], [-0.8, 0.3, 0.6], [-0.8, 0.3, -0.6]];
+    positions.forEach(pos => {
+        const w = new THREE.Mesh(wheelGeom, wheelMat);
+        w.rotation.x =
