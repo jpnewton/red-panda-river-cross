@@ -39,7 +39,7 @@ renderer.shadowMap.enabled = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// --- 3. LIGHTING (Restored for best Kirby visibility) ---
+// --- 3. LIGHTING ---
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
 scene.add(ambientLight);
 
@@ -87,26 +87,16 @@ LANES.forEach(lane => {
     }
 });
 
-// --- 6. KIRBY LOAD & HARD OFFSET FIX ---
+// --- 6. KIRBY LOAD (DIRECT & STABLE) ---
 const loader = new GLTFLoader();
 loader.load('assets/Kirby.glb', (gltf) => {
-    player = new THREE.Group(); // Create a container to handle the offset
-    const model = gltf.scene;
+    player = gltf.scene;
+    player.scale.set(0.05, 0.05, 0.05); 
+
+    // DIRECT POSITION OFFSET FIX
+    // Adjusted to center him based on your feedback
+    player.position.set(-1.5, 0.8, 6); 
     
-    // SCALE
-    model.scale.set(0.05, 0.05, 0.05); 
-
-    // --- HARD OFFSET CORRECTION ---
-    // If he's an "inch" too low and to the right, we move the model 
-    // INSIDE the container to the left and up.
-    model.position.x = -1.5; // Shift Left
-    model.position.y = 0.8;  // Shift Up
-    model.position.z = 0;
-
-    player.add(model);
-    player.position.set(0, 0, 6); // Container is at the correct start
-    scene.add(player);
-
     player.traverse((node) => {
         if (node.isMesh) {
             node.castShadow = true;
@@ -117,16 +107,22 @@ loader.load('assets/Kirby.glb', (gltf) => {
         }
     });
     
+    scene.add(player);
+
     if (gltf.animations.length > 0) {
-        mixer = new THREE.AnimationMixer(model);
+        mixer = new THREE.AnimationMixer(player);
         mixer.clipAction(gltf.animations[0]).play();
     }
 }, undefined, (error) => {
-    console.error("Load Error:", error);
+    console.error("Critical Load Error:", error);
 });
 
-// --- 7. LOGIC ---
-function reset() { if(player) player.position.set(0, 0, 6); }
+// --- 7. LOGIC & EVENTS ---
+function reset() { 
+    if(player) {
+        player.position.set(-1.5, 0.8, 6); 
+    }
+}
 
 window.addEventListener('keydown', (e) => {
     if (!gameStarted || !player || isDead) return;
@@ -134,17 +130,24 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("Kirby Won!"); reset(); }
+    if (player.position.z <= -16) { alert("Kirby Reached the Goal!"); reset(); }
 });
 
-document.getElementById('start-button').addEventListener('click', () => {
-    gameStarted = true;
-    document.getElementById('overlay').style.display = 'none';
-});
+const startBtn = document.getElementById('start-button');
+if(startBtn) {
+    startBtn.addEventListener('click', () => {
+        gameStarted = true;
+        const overlay = document.getElementById('overlay');
+        if(overlay) overlay.style.display = 'none';
+    });
+}
 
+// --- 8. ANIMATION LOOP ---
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
+    
+    // Animation safety check
     if (mixer) mixer.update(delta);
     
     if (player && gameStarted) {
@@ -156,21 +159,39 @@ function animate() {
             if (obj.position.x > 30) obj.position.x = -30;
             if (obj.position.x < -30) obj.position.x = 30;
 
+            // COLLISION: Adjusted for Kirby's specific offset (-1.5)
             const dx = Math.abs(player.position.x - obj.position.x);
             const dz = Math.abs(player.position.z - obj.position.z);
 
             if (dz < 0.9 && !isDead) {
-                if (obj.userData.type === 'car' && dx < 2.5) { crashSound.play(); reset(); }
+                if (obj.userData.type === 'car' && dx < 2.5) { 
+                    crashSound.play(); 
+                    reset(); 
+                }
                 if (obj.userData.type === 'log' && dx < 2.2) { 
-                    onLog = true; player.position.x += obj.userData.speed * obj.userData.direction; 
+                    onLog = true; 
+                    player.position.x += obj.userData.speed * obj.userData.direction; 
                 }
             }
         });
-        if (lane && lane.type === 'water' && !onLog) { splashSound.play(); reset(); }
 
+        if (lane && lane.type === 'water' && !onLog) { 
+            splashSound.play(); 
+            reset(); 
+        }
+
+        // Smooth Camera Follow
         camera.position.z = player.position.z + 10;
+        camera.position.x = 0; // Keep camera centered
         camera.lookAt(0, 0, player.position.z - 5);
     }
+    
     renderer.render(scene, camera);
 }
 animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
