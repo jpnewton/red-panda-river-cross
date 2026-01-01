@@ -20,6 +20,7 @@ const LANES = [
 let gameStarted = false;
 let player = null;
 let mixer = null;
+let isDead = false; // New state to prevent multiple hits
 const clock = new THREE.Clock();
 
 const splashSound = new Audio('assets/splash.mp3');
@@ -42,37 +43,24 @@ dirLight.position.set(10, 20, 10);
 dirLight.castShadow = true;
 scene.add(dirLight);
 
-// --- 2. THE REALISTIC CAR FACTORY ---
+// --- 2. DETAILED MODELS ---
 function createRealisticCar(z, speed, direction) {
     const group = new THREE.Group();
-    const colors = [0xff4444, 0x3333ff, 0x222222, 0xffffff];
-    const carColor = colors[Math.floor(Math.random()*colors.length)];
-    
+    const carColor = [0xff4444, 0x3333ff, 0x222222, 0xffffff][Math.floor(Math.random()*4)];
     const bodyMat = new THREE.MeshPhongMaterial({ color: carColor });
-    const blackMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
     const glassMat = new THREE.MeshPhongMaterial({ color: 0x88ccff, transparent: true, opacity: 0.6 });
 
-    // Lower Chassis (Rounded look using a box with offset)
     const body = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.6, 1.5), bodyMat);
     body.position.y = 0.5;
     group.add(body);
 
-    // Upper Cabin (Slope look)
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 1.3), glassMat);
     cabin.position.set(-0.2, 1.0, 0);
     group.add(cabin);
 
-    // Bumpers
-    const bumperGeom = new THREE.BoxGeometry(0.2, 0.3, 1.5);
-    const frontBumper = new THREE.Mesh(bumperGeom, blackMat);
-    frontBumper.position.set(1.4, 0.4, 0);
-    group.add(frontBumper);
-
-    // Wheels (Four detailed wheels)
-    const wheelGeom = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 16);
     const wheels = [[1, 0.35, 0.7], [1, 0.35, -0.7], [-1, 0.35, 0.7], [-1, 0.35, -0.7]];
     wheels.forEach(pos => {
-        const w = new THREE.Mesh(wheelGeom, blackMat);
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.3, 16), new THREE.MeshPhongMaterial({color: 0x111111}));
         w.rotation.x = Math.PI / 2;
         w.position.set(pos[0], pos[1], pos[2]);
         group.add(w);
@@ -80,40 +68,27 @@ function createRealisticCar(z, speed, direction) {
 
     group.position.set(Math.random() * 40 - 20, 0, z);
     if (direction < 0) group.rotation.y = Math.PI;
-
     group.userData = { speed, direction, type: 'car' };
-    group.traverse(c => { if(c.isMesh) c.castShadow = true; });
     return group;
 }
 
-// --- 3. TIRES AND LOGS ---
 function createTire(z, speed, direction) {
-    const tireGeom = new THREE.TorusGeometry(0.5, 0.25, 12, 24);
-    const tireMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
-    const mesh = new THREE.Mesh(tireGeom, tireMat);
+    const mesh = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.25, 12, 24), new THREE.MeshPhongMaterial({ color: 0x111111 }));
     mesh.rotation.x = Math.PI / 2;
     mesh.position.set(Math.random() * 40 - 20, 0.1, z);
     mesh.userData = { speed, direction, type: 'tire' };
-    mesh.castShadow = true;
     return mesh;
 }
 
 function createRealisticLog(z, speed, direction) {
-    const group = new THREE.Group();
-    const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.6, 0.6, 4, 12),
-        new THREE.MeshPhongMaterial({ color: 0x5d4037 })
-    );
-    trunk.rotation.z = Math.PI / 2;
-    trunk.position.y = 0.3;
-    group.add(trunk);
-    
-    group.position.set(Math.random() * 40 - 20, 0, z);
-    group.userData = { speed, direction, type: 'log' };
-    return group;
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 4, 12), new THREE.MeshPhongMaterial({ color: 0x5d4037 }));
+    log.rotation.z = Math.PI / 2;
+    log.position.set(Math.random() * 40 - 20, 0.3, z);
+    log.userData = { speed, direction, type: 'log' };
+    return log;
 }
 
-// --- 4. WORLD GEN ---
+// --- 3. WORLD GENERATION ---
 const obstacles = [];
 LANES.forEach(lane => {
     const color = lane.type === 'grass' ? 0x2ecc71 : (lane.type === 'water' ? 0x0077be : 0x222222);
@@ -126,7 +101,7 @@ LANES.forEach(lane => {
 
     if (lane.type === 'water') {
         for (let i = 0; i < 4; i++) {
-            const obj = Math.random() > 0.3 ? createRealisticLog(lane.z, speed, direction) : createTire(lane.z, speed, direction);
+            const obj = Math.random() > 0.4 ? createRealisticLog(lane.z, speed, direction) : createTire(lane.z, speed, direction);
             obstacles.push(obj); scene.add(obj);
         }
     } else if (lane.type === 'road') {
@@ -137,12 +112,11 @@ LANES.forEach(lane => {
     }
 });
 
-// Trophy
 const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new THREE.MeshPhongMaterial({ color: 0xffd700 }));
 trophy.position.set(0, 1, -16);
 scene.add(trophy);
 
-// --- 5. PLAYER & INPUT ---
+// --- 4. PLAYER & HIT EFFECTS ---
 const loader = new GLTFLoader();
 loader.load('assets/foxpacked.glb', (gltf) => {
     player = gltf.scene;
@@ -155,16 +129,41 @@ loader.load('assets/foxpacked.glb', (gltf) => {
     }
 });
 
+function handleCollision(type) {
+    if (isDead) return;
+    isDead = true;
+
+    if (type === 'car') {
+        crashSound.play();
+        // 1. Red Flash Effect
+        player.traverse(node => {
+            if (node.isMesh) node.material.emissive.setHex(0xff0000);
+        });
+        
+        // 2. Short Delay before reset
+        setTimeout(() => {
+            player.traverse(node => {
+                if (node.isMesh) node.material.emissive.setHex(0x000000);
+            });
+            reset();
+            isDead = false;
+        }, 500);
+    } else {
+        splashSound.play();
+        reset();
+        isDead = false;
+    }
+}
+
 function reset() { player.position.set(0, 0, 6); }
 
 window.addEventListener('keydown', (e) => {
-    if (!gameStarted || !player) return;
+    if (!gameStarted || !player || isDead) return;
     if (e.key === "ArrowUp") player.position.z -= GRID_SIZE;
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    player.position.x = Math.max(-14, Math.min(14, player.position.x));
-    if (player.position.z <= -16) { alert("Goal Reached!"); reset(); }
+    if (player.position.z <= -16) { alert("Goal!"); reset(); }
 });
 
 document.getElementById('start-button').addEventListener('click', () => {
@@ -172,7 +171,7 @@ document.getElementById('start-button').addEventListener('click', () => {
     document.getElementById('overlay').style.display = 'none';
 });
 
-// --- 6. GAME LOOP ---
+// --- 5. GAME LOOP ---
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
@@ -189,18 +188,13 @@ function animate() {
             if (obj.position.x > 25) obj.position.x = -25;
             if (obj.position.x < -25) obj.position.x = 25;
 
-            // --- FIXED COLLISION LOGIC ---
             const dx = Math.abs(player.position.x - obj.position.x);
             const dz = Math.abs(player.position.z - obj.position.z);
 
-            // COLLISION ZONE: dz (Z-alignment) must be close, dx (width) depends on object size
-            if (dz < 0.9) {
-                // Car hit check (Wide hitbox for safety)
+            if (dz < 0.9 && !isDead) {
                 if (obj.userData.type === 'car' && dx < 2.5) {
-                    crashSound.play();
-                    reset();
+                    handleCollision('car');
                 }
-                // Platform check (Log/Tire)
                 if ((obj.userData.type === 'log' && dx < 2.2) || (obj.userData.type === 'tire' && dx < 1.0)) {
                     onPlatform = true;
                     player.position.x += obj.userData.speed * obj.userData.direction;
@@ -208,11 +202,20 @@ function animate() {
             }
         });
 
-        if (lane && lane.type === 'water' && !onPlatform) {
-            splashSound.play();
-            reset();
+        if (lane && lane.type === 'water' && !onPlatform && !isDead) {
+            handleCollision('water');
         }
+
+        // Camera Logic
         camera.position.z = player.position.z + 12;
+        // Screen Shake Effect when dead
+        if (isDead) {
+            camera.position.x = (Math.random() - 0.5) * 0.5;
+            camera.position.y = 15 + (Math.random() - 0.5) * 0.5;
+        } else {
+            camera.position.x = 0;
+            camera.position.y = 15;
+        }
         camera.lookAt(player.position.x, 0, player.position.z);
     }
     renderer.render(scene, camera);
