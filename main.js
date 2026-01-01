@@ -104,7 +104,7 @@ function createVehicle(z, direction) {
         group.add(w);
     });
 
-    const speed = 0.08 + Math.random() * 0.1; // Unique speed per car
+    const speed = 0.08 + Math.random() * 0.1; 
     group.position.set(Math.random() * 60 - 30, 0, z);
     if (direction < 0) group.rotation.y = Math.PI;
     group.userData = { speed, direction, type: 'car' };
@@ -122,7 +122,6 @@ function createRealisticLog(z, direction) {
     log.position.y = 0.3;
     group.add(log);
     
-    // DEBUG: Speed is now generated uniquely for every single log
     const speed = 0.04 + Math.random() * 0.05; 
     
     group.position.set(Math.random() * 60 - 30, 0, z);
@@ -156,17 +155,21 @@ const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new 
 trophy.position.set(0, 1, -16);
 scene.add(trophy);
 
-// --- 5. PLAYER & COLLISION ---
+// --- 5. PLAYER & COLLISION (CHICKEN UPDATE) ---
 const loader = new GLTFLoader();
-loader.load('assets/foxpacked.glb', (gltf) => {
+// Updated to load Chicken.glb
+loader.load('assets/Chicken.glb', (gltf) => {
     player = gltf.scene;
-    player.scale.set(0.6, 0.6, 0.6);
+    // Adjust scale: Chickens are usually smaller than foxes in 3D files
+    player.scale.set(0.8, 0.8, 0.8); 
     player.position.set(0, 0, 6);
     scene.add(player);
     if (gltf.animations.length > 0) {
         mixer = new THREE.AnimationMixer(player);
         mixer.clipAction(gltf.animations[0]).play();
     }
+}, undefined, (error) => {
+    console.error("Error loading Chicken.glb. Make sure the file is in the assets folder.", error);
 });
 
 function handleCollision(type) {
@@ -175,7 +178,10 @@ function handleCollision(type) {
     if (type === 'car') {
         crashSound.play();
         triggerSplat(player.position);
-        player.traverse(n => { if(n.isMesh) { n.material.emissive.setHex(0xff0000); n.material.emissiveIntensity = 2; }});
+        player.traverse(n => { if(n.isMesh) { 
+            n.material.emissive = new THREE.Color(0xff0000); 
+            n.material.emissiveIntensity = 2; 
+        }});
         setTimeout(() => {
             player.traverse(n => { if(n.isMesh) n.material.emissive.setHex(0x000000); });
             reset();
@@ -192,7 +198,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("Goal!"); reset(); }
+    if (player.position.z <= -16) { alert("The Chicken made it!"); reset(); }
 });
 
 document.getElementById('start-button').addEventListener('click', () => {
@@ -212,8 +218,6 @@ function animate() {
         const lane = LANES.find(l => Math.abs(l.z - player.position.z) < 0.5);
         obstacles.forEach(obj => {
             obj.position.x += obj.userData.speed * obj.userData.direction;
-            
-            // Boundary wrapping
             if (obj.position.x > 30) obj.position.x = -30;
             if (obj.position.x < -30) obj.position.x = 30;
 
@@ -245,8 +249,4 @@ function animate() {
 }
 animate();
 
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
+window.addEventListener('resize',
