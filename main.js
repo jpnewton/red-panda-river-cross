@@ -40,35 +40,31 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
 // --- 3. LIGHTING ---
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-scene.add(hemiLight);
+const ambientLight = new THREE.AmbientLight(0xffffff, 1.5); // Very bright ambient
+scene.add(ambientLight);
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-dirLight.position.set(10, 20, 10);
+dirLight.position.set(5, 10, 7);
 dirLight.castShadow = true;
 scene.add(dirLight);
 
 // --- 4. VEHICLE & LOG FACTORY ---
 function createVehicle(z, direction) {
     const group = new THREE.Group();
-    const colors = [0xd32f2f, 0x1976d2, 0x388e3c, 0xfbc02d];
-    const carMat = new THREE.MeshStandardMaterial({ color: colors[Math.floor(Math.random()*colors.length)], roughness: 0.2 });
-    
+    const carMat = new THREE.MeshToonMaterial({ color: [0xd32f2f, 0x1976d2, 0x388e3c][Math.floor(Math.random()*3)] });
     const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.7, 1.4), carMat);
     base.position.y = 0.4; group.add(base);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 1.2), new THREE.MeshStandardMaterial({color: 0x222222}));
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 1.2), new THREE.MeshToonMaterial({color: 0x222222}));
     cabin.position.set(-0.2, 1.0, 0); group.add(cabin);
-
     group.position.set(Math.random() * 40 - 20, 0, z);
     if (direction < 0) group.rotation.y = Math.PI;
     group.userData = { speed: 0.08 + Math.random() * 0.1, direction, type: 'car' };
-    group.traverse(c => { if(c.isMesh) c.castShadow = true; });
     scene.add(group);
     return group;
 }
 
 function createRealisticLog(z, direction) {
-    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 4, 12), new THREE.MeshStandardMaterial({ color: 0x5d4037 }));
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 4, 12), new THREE.MeshToonMaterial({ color: 0x5d4037 }));
     log.rotation.z = Math.PI / 2;
     log.position.set(Math.random() * 40 - 20, 0.3, z);
     log.userData = { speed: 0.04 + Math.random() * 0.05, direction, type: 'log' };
@@ -80,11 +76,9 @@ function createRealisticLog(z, direction) {
 const obstacles = [];
 LANES.forEach(lane => {
     const color = lane.type === 'grass' ? 0x2ecc71 : (lane.type === 'water' ? 0x0077be : 0x222222);
-    const ground = new THREE.Mesh(new THREE.BoxGeometry(60, 1, GRID_SIZE), new THREE.MeshStandardMaterial({ color }));
+    const ground = new THREE.Mesh(new THREE.BoxGeometry(60, 1, GRID_SIZE), new THREE.MeshToonMaterial({ color }));
     ground.position.set(0, -0.5, lane.z);
-    ground.receiveShadow = true;
     scene.add(ground);
-
     const direction = Math.random() > 0.5 ? 1 : -1;
     if (lane.type === 'water') {
         for (let i = 0; i < 4; i++) obstacles.push(createRealisticLog(lane.z, direction));
@@ -93,46 +87,42 @@ LANES.forEach(lane => {
     }
 });
 
-const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new THREE.MeshStandardMaterial({ color: 0xffd700 }));
-trophy.position.set(0, 1, -16);
-scene.add(trophy);
-
-// --- 6. KIRBY AUTO-SCALE LOAD ---
+// --- 6. KIRBY "FORCE VISIBLE" LOAD ---
 const loader = new GLTFLoader();
 loader.load('assets/Kirby.glb', (gltf) => {
     player = gltf.scene;
-    
-    // AUTO-SCALE LOGIC:
+
+    // AUTO-SCALE
     const box = new THREE.Box3().setFromObject(player);
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
-    const targetSize = 1.2; // We want Kirby to be roughly 1.2 units big
-    const scale = targetSize / maxDim;
+    const scale = 1.5 / maxDim; // Force Kirby to be 1.5 units
     player.scale.set(scale, scale, scale);
 
-    player.position.set(0, 0, 6);
-    player.visible = true; // Force visibility
-    
     player.traverse((node) => {
         if (node.isMesh) {
+            // FORCE A VISIBLE TOON MATERIAL
+            // This replaces whatever broken material was in the GLB file
+            const oldTexture = node.material.map;
+            node.material = new THREE.MeshToonMaterial({
+                map: oldTexture,
+                color: oldTexture ? 0xffffff : 0xffb6c1, // Pink if no texture
+                side: THREE.DoubleSide
+            });
             node.castShadow = true;
-            node.receiveShadow = true;
-            node.material.visible = true; // Force material visibility
-            if (node.material) {
-                node.material.metalness = 0;
-                node.material.roughness = 0.5;
-            }
+            node.visible = true;
         }
     });
 
+    player.position.set(0, 0, 6);
     scene.add(player);
+    
     if (gltf.animations.length > 0) {
         mixer = new THREE.AnimationMixer(player);
         mixer.clipAction(gltf.animations[0]).play();
     }
-    console.log("Kirby loaded and auto-scaled to:", scale);
 }, undefined, (error) => {
-    console.error("Kirby failed to load. Check file name:", error);
+    console.error("Load Error:", error);
 });
 
 // --- 7. LOGIC ---
@@ -144,7 +134,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("Kirby Safe!"); reset(); }
+    if (player.position.z <= -16) { alert("Kirby Won!"); reset(); }
 });
 
 document.getElementById('start-button').addEventListener('click', () => {
@@ -170,7 +160,7 @@ function animate() {
             const dz = Math.abs(player.position.z - obj.position.z);
 
             if (dz < 0.9 && !isDead) {
-                if (obj.userData.type === 'car' && dx < 2.2) { crashSound.play(); reset(); }
+                if (obj.userData.type === 'car' && dx < 2.0) { crashSound.play(); reset(); }
                 if (obj.userData.type === 'log' && dx < 2.2) { 
                     onLog = true; player.position.x += obj.userData.speed * obj.userData.direction; 
                 }
