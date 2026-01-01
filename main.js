@@ -26,7 +26,7 @@ const clock = new THREE.Clock();
 const splashSound = new Audio('assets/splash.mp3');
 const crashSound = new Audio('https://actions.google.com/sounds/v1/impacts/crash_metal.ogg');
 
-// --- 2. SCENE & RENDERER SETUP ---
+// --- 2. SCENE SETUP ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
 
@@ -36,17 +36,12 @@ camera.position.set(0, 18, 12);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-
-// Universal Color Fix (Works with both old and new Three.js versions)
-if (renderer.outputColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
-else if (renderer.outputEncoding) renderer.outputEncoding = 3001; // 3001 is sRGBEncoding
-
 document.body.appendChild(renderer.domElement);
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
 scene.add(ambientLight);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
 dirLight.position.set(10, 20, 10);
 dirLight.castShadow = true;
 scene.add(dirLight);
@@ -133,21 +128,21 @@ const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new 
 trophy.position.set(0, 1, -16);
 scene.add(trophy);
 
-// --- 6. CHICKEN LOAD ---
+// --- 6. OCTOPUS LOAD ---
 const loader = new GLTFLoader();
-loader.load('assets/Chicken.glb', (gltf) => {
+loader.load('assets/Octopus.glb', (gltf) => {
     player = gltf.scene;
-    player.scale.set(0.1, 0.1, 0.1); 
+    player.scale.set(0.5, 0.5, 0.5); // Adjust this if he's too big/small
     player.position.set(0, 0, 6);
     
     player.traverse((node) => {
         if (node.isMesh) {
             node.castShadow = true;
             node.receiveShadow = true;
+            // Simple material reset to avoid the "black" issue
             if (node.material) {
-                node.material.metalness = 0; 
-                node.material.roughness = 0.6;
-                node.material.needsUpdate = true;
+                node.material.metalness = 0;
+                node.material.roughness = 0.7;
             }
         }
     });
@@ -158,20 +153,10 @@ loader.load('assets/Chicken.glb', (gltf) => {
         mixer.clipAction(gltf.animations[0]).play();
     }
 }, undefined, (error) => {
-    console.error("Critical error loading Chicken.glb:", error);
+    console.error("Error loading Octopus.glb:", error);
 });
 
-// --- 7. BUTTON & EVENT HANDLERS ---
-const startButton = document.getElementById('start-button');
-if (startButton) {
-    startButton.addEventListener('click', () => {
-        gameStarted = true;
-        const overlay = document.getElementById('overlay');
-        if (overlay) overlay.style.display = 'none';
-        console.log("Game successfully started");
-    });
-}
-
+// --- 7. LOGIC & EVENTS ---
 function handleCollision(type) {
     if (isDead || !player) return;
     isDead = true;
@@ -195,7 +180,12 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("Winner!"); reset(); }
+    if (player.position.z <= -16) { alert("The Octopus crossed the road!"); reset(); }
+});
+
+document.getElementById('start-button').addEventListener('click', () => {
+    gameStarted = true;
+    document.getElementById('overlay').style.display = 'none';
 });
 
 // --- 8. ANIMATION LOOP ---
@@ -226,6 +216,7 @@ function animate() {
         });
         if (lane && lane.type === 'water' && !onLog && !isDead) handleCollision('water');
 
+        // Camera Follow
         camera.position.z = player.position.z + 10;
         camera.position.x = 0;
         camera.lookAt(0, 0, player.position.z - 5);
