@@ -36,12 +36,14 @@ camera.position.set(0, 18, 12);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-// This line ensures 3D model colors are not washed out or black
-renderer.outputColorSpace = THREE.SRGBColorSpace; 
+
+// Universal Color Fix (Works with both old and new Three.js versions)
+if (renderer.outputColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
+else if (renderer.outputEncoding) renderer.outputEncoding = 3001; // 3001 is sRGBEncoding
+
 document.body.appendChild(renderer.domElement);
 
-// Strong Lighting for 3D Textures
-const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); // Brightened
+const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
 scene.add(ambientLight);
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -76,21 +78,20 @@ function createVehicle(z, direction) {
     const colors = [0xd32f2f, 0x1976d2, 0x388e3c, 0xfbc02d, 0x7b1fa2];
     const bodyMat = new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random()*colors.length)] });
     
-    if (type < 0.4) { // Sedan
+    if (type < 0.4) {
         const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 1.2), bodyMat);
         base.position.y = 0.4; group.add(base);
-    } else if (type < 0.7) { // SUV
+    } else if (type < 0.7) {
         const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.8, 1.3), bodyMat);
         base.position.y = 0.5; group.add(base);
-    } else { // Truck
+    } else {
         const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 1.4), bodyMat);
         cabin.position.set(1, 0.9, 0); group.add(cabin);
         const cargo = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.8, 1.4), new THREE.MeshPhongMaterial({color: 0xeeeeee}));
         cargo.position.set(-1.4, 1.0, 0); group.add(cargo);
     }
 
-    const wheels = [[1, 0.3, 0.6], [1, 0.3, -0.6], [-1, 0.3, 0.6], [-1, 0.3, -0.6]];
-    wheels.forEach(pos => {
+    [[1, 0.3, 0.6], [1, 0.3, -0.6], [-1, 0.3, 0.6], [-1, 0.3, -0.6]].forEach(pos => {
         const w = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.3, 16), new THREE.MeshPhongMaterial({color: 0x111111}));
         w.rotation.x = Math.PI/2; w.position.set(pos[0], pos[1], pos[2]);
         group.add(w);
@@ -132,26 +133,20 @@ const trophy = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5, 0.2, 64, 8), new 
 trophy.position.set(0, 1, -16);
 scene.add(trophy);
 
-// --- 6. CHICKEN LOAD & COLOR FIX ---
+// --- 6. CHICKEN LOAD ---
 const loader = new GLTFLoader();
 loader.load('assets/Chicken.glb', (gltf) => {
     player = gltf.scene;
-
-    // SCALING: Reduced to 0.1 for a standard size
     player.scale.set(0.1, 0.1, 0.1); 
     player.position.set(0, 0, 6);
     
-    // MATERIAL COLOR FIXER
     player.traverse((node) => {
         if (node.isMesh) {
             node.castShadow = true;
             node.receiveShadow = true;
-            // Force the material to ignore metallic/black settings
             if (node.material) {
                 node.material.metalness = 0; 
                 node.material.roughness = 0.6;
-                node.material.emissiveIntensity = 0;
-                if (node.material.map) node.material.map.colorSpace = THREE.SRGBColorSpace;
                 node.material.needsUpdate = true;
             }
         }
@@ -163,8 +158,19 @@ loader.load('assets/Chicken.glb', (gltf) => {
         mixer.clipAction(gltf.animations[0]).play();
     }
 }, undefined, (error) => {
-    console.error("Chicken.glb not found or error loading.");
+    console.error("Critical error loading Chicken.glb:", error);
 });
+
+// --- 7. BUTTON & EVENT HANDLERS ---
+const startButton = document.getElementById('start-button');
+if (startButton) {
+    startButton.addEventListener('click', () => {
+        gameStarted = true;
+        const overlay = document.getElementById('overlay');
+        if (overlay) overlay.style.display = 'none';
+        console.log("Game successfully started");
+    });
+}
 
 function handleCollision(type) {
     if (isDead || !player) return;
@@ -189,24 +195,20 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("The Chicken is Safe!"); reset(); }
+    if (player.position.z <= -16) { alert("Winner!"); reset(); }
 });
 
-document.getElementById('start-button').addEventListener('click', () => {
-    gameStarted = true;
-    document.getElementById('overlay').style.display = 'none';
-});
-
-// --- 7. GAME LOOP ---
+// --- 8. ANIMATION LOOP ---
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
     if (mixer) mixer.update(delta);
     trophy.rotation.y += 0.02;
 
-    let onLog = false;
-    if (player) {
+    if (player && gameStarted) {
         const lane = LANES.find(l => Math.abs(l.z - player.position.z) < 0.5);
+        let onLog = false;
+
         obstacles.forEach(obj => {
             obj.position.x += obj.userData.speed * obj.userData.direction;
             if (obj.position.x > 30) obj.position.x = -30;
@@ -224,7 +226,6 @@ function animate() {
         });
         if (lane && lane.type === 'water' && !onLog && !isDead) handleCollision('water');
 
-        // Fixed Follow Camera
         camera.position.z = player.position.z + 10;
         camera.position.x = 0;
         camera.lookAt(0, 0, player.position.z - 5);
@@ -239,9 +240,3 @@ function animate() {
     renderer.render(scene, camera);
 }
 animate();
-
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
