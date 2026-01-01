@@ -28,15 +28,17 @@ const crashSound = new Audio('https://actions.google.com/sounds/v1/impacts/crash
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
+
+// --- CAMERA SETUP (LOCKED ANGLE) ---
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 15, 15); 
+camera.position.set(0, 18, 12); // Higher and slightly back for a consistent view
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
 dirLight.position.set(10, 20, 10);
@@ -63,49 +65,40 @@ function triggerSplat(pos) {
     }, 1000);
 }
 
-// --- 3. VEHICLE FACTORY (SEDANS, SUVS, TRUCKS) ---
+// --- 3. VEHICLE FACTORY ---
 function createVehicle(z, speed, direction) {
     const group = new THREE.Group();
-    const type = Math.random(); // Randomly choose vehicle type
-    
+    const type = Math.random();
     const colors = [0xd32f2f, 0x1976d2, 0x388e3c, 0xfbc02d, 0x7b1fa2];
     const bodyMat = new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random()*colors.length)] });
     const glassMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
     const tireMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
 
-    if (type < 0.4) { 
-        // --- SEDAN ---
+    if (type < 0.4) { // Sedan
         const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 1.2), bodyMat);
         base.position.y = 0.4;
         group.add(base);
         const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.1), glassMat);
         cabin.position.set(-0.2, 0.9, 0);
         group.add(cabin);
-    } else if (type < 0.7) {
-        // --- SUV / VAN ---
+    } else if (type < 0.7) { // SUV
         const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.8, 1.3), bodyMat);
         base.position.y = 0.5;
         group.add(base);
         const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.2), glassMat);
         top.position.set(-0.2, 1.1, 0);
         group.add(top);
-    } else {
-        // --- LARGE TRUCK ---
+    } else { // Truck
         const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 1.4), bodyMat);
         cabin.position.set(1, 0.9, 0);
         group.add(cabin);
-        const container = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.8, 1.4), new THREE.MeshPhongMaterial({color: 0xeeeeee}));
-        container.position.set(-1.4, 1.0, 0);
-        group.add(container);
-        const windShield = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 1.2), glassMat);
-        windShield.position.set(1.6, 1.3, 0);
-        group.add(windShield);
+        const cargo = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.8, 1.4), new THREE.MeshPhongMaterial({color: 0xeeeeee}));
+        cargo.position.set(-1.4, 1.0, 0);
+        group.add(cargo);
     }
 
-    // Shared: Add Wheels
     const wheelGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.3, 16);
-    const wheels = [[1, 0.3, 0.6], [1, 0.3, -0.6], [-1, 0.3, 0.6], [-1, 0.3, -0.6]];
-    wheels.forEach(pos => {
+    [[1, 0.3, 0.6], [1, 0.3, -0.6], [-1, 0.3, 0.6], [-1, 0.3, -0.6]].forEach(pos => {
         const w = new THREE.Mesh(wheelGeom, tireMat);
         w.rotation.x = Math.PI/2;
         w.position.set(pos[0], pos[1], pos[2]);
@@ -186,7 +179,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === "ArrowDown") player.position.z += GRID_SIZE;
     if (e.key === "ArrowLeft") player.position.x -= GRID_SIZE;
     if (e.key === "ArrowRight") player.position.x += GRID_SIZE;
-    if (player.position.z <= -16) { alert("Success!"); reset(); }
+    if (player.position.z <= -16) { alert("Goal!"); reset(); }
 });
 
 document.getElementById('start-button').addEventListener('click', () => {
@@ -194,6 +187,7 @@ document.getElementById('start-button').addEventListener('click', () => {
     document.getElementById('overlay').style.display = 'none';
 });
 
+// --- 6. GAME LOOP ---
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
@@ -218,9 +212,21 @@ function animate() {
         });
         if (lane && lane.type === 'water' && !onLog && !isDead) handleCollision('water');
 
-        camera.position.z = player.position.z + 12;
-        camera.position.x = isDead ? (Math.random()-0.5) : 0;
-        camera.lookAt(player.position.x, 0, player.position.z);
+        // --- FIXED LOCKED CAMERA ---
+        // 1. Move camera with player forward/backward (Z)
+        camera.position.z = player.position.z + 10;
+        // 2. Keep camera centered on track (X remains 0)
+        camera.position.x = 0;
+        // 3. Look at a fixed point ahead of the player to keep the angle straight
+        camera.lookAt(0, 0, player.position.z - 5);
+
+        // Screen shake logic
+        if (isDead) {
+            camera.position.x += (Math.random()-0.5) * 0.8;
+            camera.position.y += (Math.random()-0.5) * 0.8;
+        } else {
+            camera.position.y = 18;
+        }
     }
     renderer.render(scene, camera);
 }
